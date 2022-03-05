@@ -20,6 +20,7 @@ namespace health {
 
 static const std::vector<ChargingEnabledNode> kChargingEnabledNodes = {
     {"/sys/class/oplus_chg/battery/mmi_charging_enable", "1", "0"},
+    {"/sys/devices/virtual/oplus_chg/battery/mmi_charging_enable", "1", "0"},
 };
 
 static bool fileExists(const std::string& path) {
