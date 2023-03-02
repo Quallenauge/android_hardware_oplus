@@ -30,9 +30,11 @@ static bool fileExists(const std::string& path) {
 LineageHealth::LineageHealth() : mChargingEnabledNode(nullptr) {
     for (const auto& node : kChargingEnabledNodes) {
         if (!fileExists(node.path)) {
+            LOG(ERROR) << "Node doesn't exists!" << node.path;
             continue;
         }
 
+        LOG(ERROR) << "Found existing battery node: " << node.path;
         mChargingEnabledNode = &node;
         break;
     }
@@ -40,6 +42,7 @@ LineageHealth::LineageHealth() : mChargingEnabledNode(nullptr) {
 
 ndk::ScopedAStatus LineageHealth::getChargingEnabled(bool* _aidl_return) {
     if (!mChargingEnabledNode) {
+        LOG(ERROR) << "Charging switch state isn't possible! Node is null!";
         return ndk::ScopedAStatus::fromExceptionCode(EX_UNSUPPORTED_OPERATION);
     }
 
@@ -59,8 +62,10 @@ ndk::ScopedAStatus LineageHealth::getChargingEnabled(bool* _aidl_return) {
     }
 
     if (chargingEnabledResult == mChargingEnabledNode->value_true) {
+        LOG(ERROR) << "Returning true : " << chargingEnabledResult;
         *_aidl_return = true;
     } else if (chargingEnabledResult == mChargingEnabledNode->value_false) {
+        LOG(ERROR) << "Returning false : " << chargingEnabledResult;
         *_aidl_return = false;
     } else {
         LOG(ERROR) << "Unknown value " << chargingEnabledResult;
@@ -71,7 +76,9 @@ ndk::ScopedAStatus LineageHealth::getChargingEnabled(bool* _aidl_return) {
 }
 
 ndk::ScopedAStatus LineageHealth::setChargingEnabled(bool enabled) {
+    LOG(ERROR) << "Charging switch should set to " << enabled;
     if (!mChargingEnabledNode) {
+        LOG(ERROR) << "Charging switch state isn't possible! Node is null!";
         return ndk::ScopedAStatus::fromExceptionCode(EX_UNSUPPORTED_OPERATION);
     }
 
@@ -90,6 +97,7 @@ ndk::ScopedAStatus LineageHealth::setChargingEnabled(bool enabled) {
         return ndk::ScopedAStatus::fromExceptionCode(EX_ILLEGAL_STATE);
     }
 
+    LOG(ERROR) << "Charging switch was set to " << enabled;
     return ndk::ScopedAStatus::ok();
 }
 

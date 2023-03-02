@@ -1,4 +1,10 @@
 service vendor.lineage_health /vendor/bin/hw/vendor.lineage.health-service.oplus
-    class hal
     user system
     group system
+    disabled
+
+on boot
+    wait /sys/devices/virtual/oplus_chg/battery/mmi_charging_enable 10
+    chown system system /sys/devices/virtual/oplus_chg/battery/mmi_charging_enable
+    chmod 0664 /sys/devices/virtual/oplus_chg/battery/mmi_charging_enable
+    start vendor.lineage_health
