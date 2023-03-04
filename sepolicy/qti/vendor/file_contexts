@@ -12,6 +12,7 @@
 
 # Charging
 /vendor/bin/hw/vendor\.lineage\.powershare@1\.0-service\.oplus    u:object_r:hal_lineage_powershare_default_exec:s0
+/(vendor|system/vendor)/bin/hw/vendor\.lineage\.health-service\.oplus             u:object_r:hal_lineage_health_default_exec:s0
 
 # CommonDcs
 /vendor/bin/hw/vendor\.oplus\.hardware\.commondcs-service    u:object_r:hal_oplus_commondcs_aidl_exec:s0
