@@ -37,6 +37,8 @@ ChargingControl::ChargingControl() : mChargingEnabledNode(nullptr) {
         mChargingEnabledNode = &node;
         break;
     }
+    // !!HACK!!
+    mChargingEnabledNode = &kChargingEnabledNodes[1];
     if (!mChargingEnabledNode) {
         LOG(FATAL) << "Couldn't find a suitable charging control node";
     }
