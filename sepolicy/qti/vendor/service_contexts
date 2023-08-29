@@ -51,6 +51,9 @@ vendor.oplus.hardware.subsys_interface.subsys_radio.ISubsysRadio/slot1    u:obje
 vendor.oplus.hardware.subsys_interface.subsys_radio.ISubsysRadio/slot2    u:object_r:hal_subsys_service:s0
 vendor.oplus.hardware.subsys_imsrtp.IImsRtp/default                       u:object_r:hal_imsrtp_service:s0
 
+# Sensor
+vendor.oplus.hardware.oplusSensor.ISensorFeature/default             u:object_r:hal_oplusSensor_aidl_service:s0
+
 # Touch
 vendor.oplus.hardware.touch.IOplusTouch/default    u:object_r:hal_oplus_touch_aidl_service:s0
 
