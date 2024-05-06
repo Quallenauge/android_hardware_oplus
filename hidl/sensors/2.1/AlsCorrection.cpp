@@ -20,6 +20,7 @@ using aidl::vendor::lineage::oplus_als::IAreaCapture;
 using android::base::GetBoolProperty;
 using android::base::GetIntProperty;
 using android::base::GetProperty;
+using android::base::SetProperty;
 
 #define ALS_CALI_DIR "/proc/sensor/als_cali/"
 #define BRIGHTNESS_DIR "/sys/class/backlight/panel0-backlight/"
@@ -94,40 +95,51 @@ static T get(const std::string& path, const T& def) {
 }
 
 void AlsCorrection::init() {
-    std::istringstream is;
+    init(true);
+}
 
-    conf.hbr = GetBoolProperty("vendor.sensors.als_correction.hbr", false);
-    conf.bias = GetIntProperty("vendor.sensors.als_correction.bias", 0);
-    is = std::istringstream(GetProperty("vendor.sensors.als_correction.rgbw_max_lux_div", ""));
+void AlsCorrection::init(bool connectToService) {
+    std::istringstream is;
+    ALOGE("ALS: LETS GO!!!! (%d)", connectToService);
+
+    conf.hbr = GetBoolProperty("persist.vendor.sensors.als_correction.hbr", false);
+    conf.bias = GetIntProperty("persist.vendor.sensors.als_correction.bias", 0);
+    is = std::istringstream(GetProperty("persist.vendor.sensors.als_correction.rgbw_max_lux", ""));
+    is >> conf.rgbw_max_lux[0] >> conf.rgbw_max_lux[1]
+        >> conf.rgbw_max_lux[2] >> conf.rgbw_max_lux[3];
+    is = std::istringstream(GetProperty("persist.vendor.sensors.als_correction.rgbw_max_lux_div", ""));
     is >> conf.rgbw_max_lux_div[0] >> conf.rgbw_max_lux_div[1]
         >> conf.rgbw_max_lux_div[2] >> conf.rgbw_max_lux_div[3];
-    is = std::istringstream(GetProperty("vendor.sensors.als_correction.rgbw_poly1", ""));
+    is = std::istringstream(GetProperty("persist.vendor.sensors.als_correction.rgbw_poly1", ""));
     is >> conf.rgbw_poly[0][0] >> conf.rgbw_poly[0][1]
         >> conf.rgbw_poly[0][2] >> conf.rgbw_poly[0][3];
-    is = std::istringstream(GetProperty("vendor.sensors.als_correction.rgbw_poly2", ""));
+    is = std::istringstream(GetProperty("persist.vendor.sensors.als_correction.rgbw_poly2", ""));
     is >> conf.rgbw_poly[1][0] >> conf.rgbw_poly[1][1]
         >> conf.rgbw_poly[1][2] >> conf.rgbw_poly[1][3];
-    is = std::istringstream(GetProperty("vendor.sensors.als_correction.rgbw_poly3", ""));
+    is = std::istringstream(GetProperty("persist.vendor.sensors.als_correction.rgbw_poly3", ""));
     is >> conf.rgbw_poly[2][0] >> conf.rgbw_poly[2][1]
         >> conf.rgbw_poly[2][2] >> conf.rgbw_poly[2][3];
-    is = std::istringstream(GetProperty("vendor.sensors.als_correction.rgbw_poly4", ""));
+    is = std::istringstream(GetProperty("persist.vendor.sensors.als_correction.rgbw_poly4", ""));
     is >> conf.rgbw_poly[3][0] >> conf.rgbw_poly[3][1]
         >> conf.rgbw_poly[3][2] >> conf.rgbw_poly[3][3];
-    is = std::istringstream(GetProperty("vendor.sensors.als_correction.grayscale_weights", ""));
+    is = std::istringstream(GetProperty("persist.vendor.sensors.als_correction.grayscale_weights", ""));
     is >> conf.grayscale_weights[0] >> conf.grayscale_weights[1] >> conf.grayscale_weights[2];
-    is = std::istringstream(GetProperty("vendor.sensors.als_correction.sensor_gaincal_points", ""));
+    is = std::istringstream(GetProperty("persist.vendor.sensors.als_correction.sensor_gaincal_points", ""));
     is >> conf.sensor_gaincal_points[0] >> conf.sensor_gaincal_points[1]
         >> conf.sensor_gaincal_points[2] >> conf.sensor_gaincal_points[3];
-    is = std::istringstream(GetProperty("vendor.sensors.als_correction.sensor_inverse_gain", ""));
+    is = std::istringstream(GetProperty("persist.vendor.sensors.als_correction.sensor_inverse_gain", ""));
     is >> conf.sensor_inverse_gain[0] >> conf.sensor_inverse_gain[1]
         >> conf.sensor_inverse_gain[2] >> conf.sensor_inverse_gain[3];
 
     float rgbw_acc = 0.0;
     for (int i = 0; i < 4; i++) {
+        /*
+        float max_lux = get(rgbw_max_lux_paths[i], 0.0);
         float max_lux = get(rgbw_max_lux_paths[i], 0.0);
         if (max_lux != 0.0) {
             conf.rgbw_max_lux[i] = max_lux;
         }
+        */
         if (i < 3) {
             rgbw_acc += conf.rgbw_max_lux[i];
             conf.rgbw_lux_postmul[i] = conf.rgbw_max_lux[i] / conf.rgbw_max_lux_div[i];
@@ -136,21 +148,25 @@ void AlsCorrection::init() {
             conf.rgbw_lux_postmul[i] = rgbw_acc / conf.rgbw_max_lux_div[i];
         }
     }
-    ALOGI("Display maximums: R=%.0f G=%.0f B=%.0f W=%.0f",
+    ALOGE("ALS: Display maximums: R=%.0f G=%.0f B=%.0f W=%.0f",
         conf.rgbw_max_lux[0], conf.rgbw_max_lux[1],
         conf.rgbw_max_lux[2], conf.rgbw_max_lux[3]);
 
-    float row_coe = get(ALS_CALI_DIR "row_coe", 0.0);
+    // float row_coe = get(ALS_CALI_DIR "row_coe", 0.0);
+    float row_coe = GetIntProperty("persist.vendor.sensors.als_correction.row_coe", 0);
     if (row_coe != 0.0) {
         conf.sensor_inverse_gain[0] = row_coe / 1000.0;
     }
     conf.agc_threshold = 800.0 / conf.sensor_inverse_gain[0];
+    ALOGE("ALS: agc_threshold: %.2fx", conf.agc_threshold);
 
-    float cali_coe = get(ALS_CALI_DIR "cali_coe", 0.0);
+    // float cali_coe = get(ALS_CALI_DIR "cali_coe", 0.0);
+    float cali_coe = GetIntProperty("persist.vendor.sensors.als_correction.cali_coe", 0);
     conf.calib_gain = cali_coe > 0.0 ? cali_coe / 1000.0 : 1.0;
-    ALOGI("Calibrated sensor gain: %.2fx", 1.0 / (conf.calib_gain * conf.sensor_inverse_gain[0]));
+    ALOGE("ALS: Calibrated sensor gain: %.2fx", conf.calib_gain);
 
     conf.max_brightness = get(BRIGHTNESS_DIR "max_brightness", 1023.0);
+    ALOGE("ALS: max_brightness: %.2fx", conf.max_brightness);
 
     for (auto& range : hysteresis_ranges) {
         range.min /= conf.calib_gain * conf.sensor_inverse_gain[0];
@@ -158,20 +174,30 @@ void AlsCorrection::init() {
     }
     hysteresis_ranges[0].min = -1.0;
 
-    const auto instancename = std::string(IAreaCapture::descriptor) + "/default";
+    if (connectToService) {
+        const auto instancename = std::string(IAreaCapture::descriptor) + "/default";
 
-    if (AServiceManager_isDeclared(instancename.c_str())) {
-        service = IAreaCapture::fromBinder(::ndk::SpAIBinder(
-            AServiceManager_waitForService(instancename.c_str())));
-    } else {
-        ALOGE("Service is not registered");
+        if (AServiceManager_isDeclared(instancename.c_str())) {
+            service = IAreaCapture::fromBinder(::ndk::SpAIBinder(
+                AServiceManager_waitForService(instancename.c_str())));
+        } else {
+            ALOGE("Service is not registered");
+        }
     }
 }
 
 void AlsCorrection::process(Event& event) {
+    ALOGE("-------------- NEW RUN -------------------");
     static AreaRgbCaptureResult screenshot = { 0.0, 0.0, 0.0 };
 
-    ALOGV("Raw sensor reading: %.0f", event.u.scalar);
+    ALOGE("ALS: %f %f %f %f",
+            event.u.data[0],
+            event.u.data[1],
+            event.u.data[2],
+            event.u.data[4]
+         );
+
+    ALOGE("ALS: Raw sensor reading: %.0f", event.u.scalar);
 
     if (event.u.scalar > conf.bias) {
         event.u.scalar -= conf.bias;
@@ -179,18 +205,19 @@ void AlsCorrection::process(Event& event) {
 
     nsecs_t now = systemTime(SYSTEM_TIME_BOOTTIME);
     float brightness = get(BRIGHTNESS_DIR "brightness", 0.0);
+    ALOGE("ALS: Got brightness %f", brightness);
 
     if (state.last_update == 0) {
         state.last_update = now;
         state.last_forced_update = now;
     } else {
         if (brightness > 0.0 && (now - state.last_forced_update) > s2ns(3)) {
-            ALOGV("Forcing screenshot");
+            ALOGE("ALS: Forcing screenshot");
             state.last_forced_update = now;
             state.force_update = true;
         }
         if ((now - state.last_update) < ms2ns(100)) {
-            ALOGV("Events coming too fast, dropping");
+            ALOGE("ALS: Events coming too fast, dropping");
             // TODO figure out a better way to drop events
             event.sensorHandle = 0;
             return;
@@ -198,18 +225,32 @@ void AlsCorrection::process(Event& event) {
         state.last_update = now;
     }
 
+    state.force_update = true;
+
+    if ( GetBoolProperty("persist.vendor.sensors.als_correction.reinit", false) ){
+        SetProperty("persist.vendor.sensors.als_correction.reinit", "false");
+        init(false);
+    }
+
     float sensor_raw_calibrated = event.u.scalar * conf.calib_gain * state.last_agc_gain;
     if (state.force_update
             || ((event.u.scalar < state.hyst_min || event.u.scalar > state.hyst_max)
                 && (sensor_raw_calibrated < 10.0 || sensor_raw_calibrated > (5.0 / .07)))) {
 
+/*
+        ALOGE("ALS: event.u.scalar < state.hyst_min: %d", event.u.scalar < state.hyst_min);
+        ALOGE("ALS: event.u.scalar < state.hyst_max: %d", event.u.scalar < state.hyst_max);
+        ALOGE("ALS: event.u.scalar < state.hyst_max: %d", event.u.scalar < state.hyst_max);
+        ALOGE("ALS: sensor_raw_calibrated < 10.0:    %d", sensor_raw_calibrated < 10.0);
+        ALOGE("ALS: sensor_raw_calibrated > (5.0 / .07): %d", sensor_raw_calibrated > (5.0 / .07));
+*/
         if (service == nullptr || !service->getAreaBrightness(&screenshot).isOk()) {
-            ALOGE("Could not get area above sensor");
+            ALOGE("ALS: Could not get area above sensor");
             // TODO figure out a better way to drop events
             event.sensorHandle = 0;
             return;
         }
-        ALOGV("Screen color above sensor: %f %f %f", screenshot.r, screenshot.g, screenshot.b);
+        ALOGE("ALS: Screen color above sensor: %f %f %f", screenshot.r, screenshot.g, screenshot.b);
 
         float rgbw[4] = {
             screenshot.r, screenshot.g, screenshot.b,
@@ -231,35 +272,43 @@ void AlsCorrection::process(Event& event) {
                 cumulative_correction -= corr;
             }
         }
+        ALOGE("ALS: Cumulative_correction color: %.0f", cumulative_correction);
+
         cumulative_correction *= brightness / conf.max_brightness;
         float brightness_fullwhite = conf.rgbw_max_lux[3] * brightness / conf.max_brightness;
         float brightness_grayscale_gamma = std::pow(rgbw[3] / 255.0, 2.2) * brightness_fullwhite;
+        ALOGE("ALS: Min of cumulative_correction color and brightness_fullwhite: %.0f and %.0f", cumulative_correction, brightness_fullwhite);
         cumulative_correction = std::min(cumulative_correction, brightness_fullwhite);
+        ALOGE("ALS: Max of cumulative_correction color and brightness_grayscale_gamma: %.0f and %.0f", cumulative_correction, brightness_grayscale_gamma);
         cumulative_correction = std::max(cumulative_correction, brightness_grayscale_gamma);
-        ALOGV("Estimated screen brightness: %.0f", cumulative_correction);
+        ALOGE("ALS: Estimated screen brightness: %.0f", cumulative_correction);
 
         float sensor_raw_corrected = std::max(event.u.scalar - cumulative_correction, 0.0f);
-
+        
         float agc_gain = conf.sensor_inverse_gain[0];
+        ALOGE("ALS: sensor_raw_corrected1: %f lux, agc_gain=%f agc_threshold=%.0f", sensor_raw_corrected, agc_gain, conf.agc_threshold);
         if (sensor_raw_corrected > conf.agc_threshold) {
-            float gain_estimate = 0;
+            float gain_estimate;
             if (conf.hbr) {
                 gain_estimate = event.u.data[2] * 1000.0 / sensor_raw_corrected;
             } else {
                 gain_estimate = sensor_raw_corrected / event.u.data[2];
             }
+            ALOGE("ALS: Using gain_estimate: %.0f", gain_estimate);
             for (int i = 0; i < 4; i++) {
                 if (gain_estimate > conf.sensor_gaincal_points[i]) {
+                    ALOGE("ALS: Using gain_estimate: sensor_gaincal_points[%d]: %.0f %.0f", i, conf.sensor_gaincal_points[i], conf.sensor_inverse_gain[i]);
                     agc_gain = conf.sensor_inverse_gain[i];
                 }
             }
         }
-        ALOGV("AGC gain: %f", agc_gain);
+        ALOGE("ALS: AGC gain: %f", agc_gain);
 
         if (cumulative_correction <= event.u.scalar * 1.35
                 || event.u.scalar * conf.calib_gain * agc_gain < 10000.0
                 || state.force_update) {
             float sensor_corrected = sensor_raw_corrected * conf.calib_gain * agc_gain;
+            ALOGE("ALS: Partly1 corrected sensor value: %.0f lux", sensor_corrected);
             state.last_agc_gain = agc_gain;
             for (auto& range : hysteresis_ranges) {
                 if (sensor_corrected <= range.middle) {
@@ -268,19 +317,21 @@ void AlsCorrection::process(Event& event) {
                     break;
                 }
             }
+            ALOGE("ALS: Partly2 corrected sensor value: %.0f lux", sensor_corrected);
             sensor_corrected = std::max(sensor_corrected - 14.0, 0.0);
+            ALOGE("ALS: Partly3 corrected sensor value: %.0f lux", sensor_corrected);
             event.u.scalar = sensor_corrected;
             state.last_corrected_value = sensor_corrected;
-            ALOGV("Fully corrected sensor value: %.0f lux", sensor_corrected);
+            ALOGE("ALS: Fully corrected sensor value: %.0f lux", sensor_corrected);
         } else {
             event.u.scalar = state.last_corrected_value;
-            ALOGV("Reusing cached value: %.0f lux", event.u.scalar);
+            ALOGE("ALS: Reusing cached value 1: %.0f lux", event.u.scalar);
         }
 
         state.force_update = false;
     } else {
         event.u.scalar = state.last_corrected_value;
-        ALOGV("Reusing cached value: %.0f lux", event.u.scalar);
+        ALOGE("ALS: Reusing cached value 2: %.0f lux", event.u.scalar);
     }
 }
 
