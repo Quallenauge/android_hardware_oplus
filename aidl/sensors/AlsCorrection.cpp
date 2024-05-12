@@ -49,6 +49,7 @@ struct als_config {
     float agc_threshold;
     float calib_gain;
     float bias;
+    float post_bias;
     float max_brightness;
 };
 
@@ -97,6 +98,7 @@ static float cached_event = 0.0f;
 
 void AlsCorrection::init() {
     std::istringstream is;
+    conf.post_bias = GetIntProperty("persist.vendor.sensors.als_correction.post_bias", -14);
     conf.hbr = GetBoolProperty("persist.vendor.sensors.als_correction.hbr", false);
     conf.bias = GetIntProperty("persist.vendor.sensors.als_correction.bias", 0);
     is = std::istringstream(GetProperty("persist.vendor.sensors.als_correction.rgbw_max_lux", ""));
@@ -276,7 +278,7 @@ void AlsCorrection::process(Event& event) {
                     break;
                 }
             }
-            sensor_corrected = std::max(sensor_corrected - 14.0, 0.0);
+            sensor_corrected = std::max(sensor_corrected + conf.post_bias, 0.0f);
             event.u.scalar = sensor_corrected;
             state.last_corrected_value = sensor_corrected;
             ALOGV("Fully corrected sensor value: %.0f lux", sensor_corrected);
