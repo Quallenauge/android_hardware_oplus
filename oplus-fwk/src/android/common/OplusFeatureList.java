@@ -5,7 +5,10 @@
 
 package android.common;
 
+/* loaded from: classes.dex */
 public class OplusFeatureList {
+
+    /* loaded from: classes.dex */
     public enum OplusIndex {
         StartOplusOsServiceFactory,
         IOplusSystemServerEx,
@@ -74,6 +77,9 @@ public class OplusFeatureList {
         IOplusTouchNodeManager,
         IOplusPuttManager,
         IFoldScreenSwitchingManager,
+        IInterruptTransitionController,
+        IQuickBackInputPolicy,
+        IThreadPriorityBoosterController,
         IOplusMiscNodeManager,
         IOplusResourcePreloadManager,
         IOplusLatencyOptimizerManager,
@@ -108,6 +114,7 @@ public class OplusFeatureList {
         IOplusRecommendPermissionManager,
         IOplusCompatModeManager,
         IOplusActivityPreloadManager,
+        IOplusSlcDispatchManager,
         IOplusShoulderKeyManager,
         IOplusAppHeapSystemManager,
         EndOplusOsServiceFactory,
@@ -168,6 +175,7 @@ public class OplusFeatureList {
         IOplusPackageManagerNativeEx,
         IOplusWindowManagerServiceEx,
         IOplusPowerManagerServiceEx,
+        IOplusBackupManagerServiceEx,
         IOplusFeatureAOD,
         IOplusHeadsetFadeIn,
         IOplusAlertSliderManager,
@@ -258,6 +266,8 @@ public class OplusFeatureList {
         IOplusNewFeaturesDisplayingManager,
         IOplusLooperStatsManager,
         IOplusAppDetailsManager,
+        IOplusBackupManagerHelper,
+        IOplusBackupTaskManager,
         EndOplusServiceFactory,
         StartOplusFrameworkFactory,
         IOplusZenModeFeature,

@@ -6,13 +6,14 @@
 package android.common;
 
 public class OplusFrameworkFactory implements IOplusCommonFactory {
-    public static OplusFrameworkFactory sInstance = null;
+
+    private static OplusFrameworkFactory sOplusFrameworkFactory = null;
 
     public static OplusFrameworkFactory getInstance() {
-        if (sInstance == null) {
-            sInstance = new OplusFrameworkFactory();
+        if (sOplusFrameworkFactory == null) {
+            sOplusFrameworkFactory = new OplusFrameworkFactory();
         }
-        return sInstance;
+        return sOplusFrameworkFactory;
     }
 
     @Override
@@ -25,4 +26,5 @@ public class OplusFrameworkFactory implements IOplusCommonFactory {
                 index > OplusFeatureList.OplusIndex.StartOplusOsFrameworkFactory.ordinal();
         return vaildOplusOs || validOplus;
     }
+
 }
