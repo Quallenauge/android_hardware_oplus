@@ -94,8 +94,6 @@ static T get(const std::string& path, const T& def) {
     return file.fail() ? def : result;
 }
 
-static float cached_event = 0.0f;
-
 void AlsCorrection::init() {
     std::istringstream is;
     conf.post_bias = GetIntProperty("persist.vendor.sensors.als_correction.post_bias", -14);
@@ -213,14 +211,11 @@ void AlsCorrection::process(Event& event) {
         }
 
         if (screenshot.r + screenshot.g + screenshot.b == 0) {
-            cached_event = event.u.scalar;
             return;
         }
 
         ALOGV("Screen color above sensor: %f %f %f", screenshot.r, screenshot.g, screenshot.b);
-        // I give up.
-        event.u.scalar = cached_event;
-        return;
+
         float rgbw[4] = {
             screenshot.r, screenshot.g, screenshot.b,
             screenshot.r * conf.grayscale_weights[0]
