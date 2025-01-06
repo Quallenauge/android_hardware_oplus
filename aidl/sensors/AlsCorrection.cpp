@@ -209,11 +209,6 @@ void AlsCorrection::process(Event& event) {
             event.sensorHandle = 0;
             return;
         }
-
-        if (screenshot.r + screenshot.g + screenshot.b == 0) {
-            return;
-        }
-
         ALOGV("Screen color above sensor: %f %f %f", screenshot.r, screenshot.g, screenshot.b);
 
         float rgbw[4] = {
