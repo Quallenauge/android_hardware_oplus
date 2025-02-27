@@ -1,5 +1,10 @@
 allow tee vendor_gpt_block_device:blk_file read;
 
+# Face
+rw_dir_file(tee, face_vendor_data_file)
+allow tee face_vendor_data_file:dir { write remove_name add_name };
+
+# Fingerprint
 rw_dir_file(tee, vendor_persist_fingerprint_file)
 allow tee vendor_persist_fingerprint_file:dir { write remove_name add_name };
 allow tee vendor_persist_fingerprint_file:file { create unlink };
