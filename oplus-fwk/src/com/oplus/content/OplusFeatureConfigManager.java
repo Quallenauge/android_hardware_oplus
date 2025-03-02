@@ -26,4 +26,16 @@ public class OplusFeatureConfigManager {
     public interface OnFeatureObserver {
         default void onFeatureUpdate(List<String> features) {}
     }
+
+    public interface OnFeatureActionObserver {
+        default void onFeatureActionObserver(List<String> features) {}
+    }
+
+    public boolean registerFeatureActionObserver(OnFeatureActionObserver observer) {
+        return true;
+    }
+
+    public boolean unregisterFeatureActionObserver(OnFeatureActionObserver observer) {
+        return true;
+    }
 }
