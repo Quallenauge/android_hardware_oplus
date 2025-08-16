@@ -1,2 +1,8 @@
+# Horae
+horae    u:object_r:horae_service:s0
+
+# OSENSE
+osensemanager   u:object_r:osense_service:s0
+
 # Sensors
 vendor.lineage.oplus_als.IAreaCapture/default    u:object_r:hal_lineage_oplus_als_aidl_service:s0
