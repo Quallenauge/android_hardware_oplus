@@ -126,6 +126,10 @@ public class OplusActivityManager extends OplusBaseActivityManager implements IO
     public void removeStageProtectInfo(String pkg, String callerPkg) throws android.os.RemoteException {
     }
 
+    public boolean requestDeviceFolded(int state, boolean folded) {
+        return false;
+    }
+
     public boolean registerTaskInfoChangeListener(com.oplus.app.OplusTaskInfoChangeListener listener, int arg1, int arg2) {
         return true;
     }

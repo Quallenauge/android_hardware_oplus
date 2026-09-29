@@ -19,6 +19,8 @@ public class OplusZoomWindowInfo implements Parcelable {
         }
     };
 
+    public boolean windowShown = false;
+
     public OplusZoomWindowInfo() {}
 
     public OplusZoomWindowInfo(Parcel in) {}
