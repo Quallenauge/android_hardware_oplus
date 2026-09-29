@@ -7,6 +7,8 @@ import android.graphics.Region;
 import android.util.AttributeSet;
 import android.view.SurfaceView;
 
+import java.util.concurrent.Executor;
+
 public class FlexibleTaskView extends SurfaceView {
 
     public FlexibleTaskView(Context context) {
@@ -24,6 +26,12 @@ public class FlexibleTaskView extends SurfaceView {
     public FlexibleTaskView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes, true);
     }
+
+    public void setListener(Executor executor, Listener listener) {}
+
+    public void resize(Rect rect) {}
+
+    public void release() {}
 
     public interface Listener {
         default void onInitialized(boolean isStartSuccess) {}

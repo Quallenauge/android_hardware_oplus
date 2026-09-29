@@ -25,6 +25,10 @@ public class OsenseResEventClient {
         return 0;
     }
 
+    public int unregisterEventCallback(OsenseEventCallback callback) {
+        return 0;
+    }
+
     public void requestSceneAction(Bundle bundle) {
         return;
     }
