@@ -6,9 +6,11 @@
 #include "FusionLight.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 #include <android-base/logging.h>
+#include <android-base/parsedouble.h>
 #include <android-base/parseint.h>
 #include <android-base/properties.h>
 #include <android-base/strings.h>
@@ -37,7 +39,18 @@ constexpr auto kPeriodProperty = "ro.vendor.oplus.sensor.fusionlight.screenshot_
 // the device tree of the panel, which is where the values come from). Leave it unset if the
 // running kernel has the table: find /proc/device-tree -name "oplus,dsi-brightness-remapping".
 constexpr auto kBrightnessRemapProperty = "ro.vendor.oplus.sensor.fusionlight.brightness_remap";
+// Parameters of the panel load correction as "drop,exponent,uniform,red,green,blue,scale", for
+// example "0.218,0.82,0.41,0.256,0.232,0.528,0.963", see PanelLoadArgs and ScreenLoadWeights.
+// They belong to a panel and have to be measured, they cannot be taken from a profile. Without
+// the property the load of the panel is not taken into account.
+constexpr auto kPanelLoadProperty = "ro.vendor.oplus.sensor.fusionlight.panel_load";
 constexpr auto kDebugProperty = "persist.vendor.sensors.fusionlight.debug";
+// The load correction needs a capture of the whole screen instead of the few pixels above the
+// sensor, which costs a lot more. It changes the light of the panel by a fifth at most, which
+// only matters while that light is a large part of what the sensor sees. So the whole screen is
+// only captured while the raw value is below this multiple of the brightest light of the panel
+// according to the factory calibration. In brighter surroundings the correction is left out.
+constexpr float kPanelLoadRawLuxFactor = 2.0f;
 constexpr int64_t kCalculationHoldNs = 50'000'000;
 constexpr int64_t kFlashHoldNs = 800'000'000;
 
@@ -89,6 +102,29 @@ std::vector<BrightnessRemapPoint> ParseBrightnessRemap(const std::string& value)
     return table;
 }
 
+// Parses the parameters of the panel load correction. All seven are required and none may be
+// negative, otherwise the correction stays off.
+std::optional<PanelLoadArgs> ParsePanelLoad(const std::string& value) {
+    if (value.empty()) {
+        return std::nullopt;
+    }
+    const auto fields = android::base::Split(value, ",");
+    std::array<float, 7> values;
+    if (fields.size() != values.size()) {
+        LOG(ERROR) << "Invalid " << kPanelLoadProperty;
+        return std::nullopt;
+    }
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (!android::base::ParseFloat(android::base::Trim(fields[i]), &values[i]) ||
+            values[i] < 0.0f) {
+            LOG(ERROR) << "Invalid " << kPanelLoadProperty << " entry " << fields[i];
+            return std::nullopt;
+        }
+    }
+    return PanelLoadArgs{
+            values[0], values[1], {values[3], values[4], values[5], values[2]}, values[6]};
+}
+
 namespace {
 
 void FillUncalculated(Event& event, float raw_lux, int32_t level) {
@@ -111,8 +147,12 @@ bool FusionLight::initialize(const std::string& sensor_name) {
     const std::chrono::milliseconds period(GetIntProperty(kPeriodProperty, 50, 1, 1000));
     FusionLightEnvironment environment;
     environment.brightness_remap = ParseBrightnessRemap(GetProperty(kBrightnessRemapProperty, ""));
+    environment.panel_load = ParsePanelLoad(GetProperty(kPanelLoadProperty, ""));
     environment.panel = std::make_unique<PanelState>();
-    environment.sampler = std::make_unique<ScreenSampler>(*region, period);
+    environment.sampler = std::make_unique<ScreenSampler>(
+            *region, period,
+            environment.panel_load.has_value() ? std::make_optional(environment.panel_load->weights)
+                                               : std::nullopt);
     environment.load_args = LoadFusionLightArgs;
     environment.now_ms = NowMs;
     initialize(sensor_name, std::move(environment));
@@ -127,6 +167,7 @@ void FusionLight::initialize(const std::string& sensor_name, FusionLightEnvironm
     panel_ = std::move(environment.panel);
     sampler_ = std::move(environment.sampler);
     brightness_remap_ = std::move(environment.brightness_remap);
+    panel_load_ = environment.panel_load;
     load_args_ = std::move(environment.load_args);
     now_ms_ = std::move(environment.now_ms);
 }
@@ -185,7 +226,14 @@ bool FusionLight::process(Event& event) {
         }
     }
 
-    int32_t level = ToBrightness(brightness_remap_, panel_->brightness());
+    panel_level_ = panel_->brightness();
+    if (panel_load_.has_value()) {
+        // Decided for every event from the raw value alone, so it follows the surroundings
+        // getting dark without waiting for a calculation.
+        const float panel_light = args_.r.max + args_.g.max + args_.b.max;
+        sampler_->setWholeScreen(event.u.data[0] < kPanelLoadRawLuxFactor * panel_light);
+    }
+    int32_t level = ToBrightness(brightness_remap_, panel_level_);
     updateScreenState(level);
     if (args_.level_from_event != 0) {
         level = static_cast<int32_t>(event.u.data[3]);
@@ -406,8 +454,9 @@ bool FusionLight::updateLux(Event& event, int32_t level) {
     if (debug_) {
         LOG(INFO) << "lux=" << event.u.data[0] << " leakage=" << event.u.data[3] << " RGB("
                   << event.u.data[5] << ", " << event.u.data[6] << ", " << event.u.data[7]
-                  << ") clear=" << event.u.data[8] << " ambient_raw=" << last_raw_lux_ << " range["
-                  << lux_range_ << "].level=" << tables.level[lux_range_];
+                  << ") load_factor=" << last_panel_load_factor_ << " clear=" << event.u.data[8]
+                  << " ambient_raw=" << last_raw_lux_ << " range[" << lux_range_
+                  << "].level=" << tables.level[lux_range_];
     }
     finishReport(event);
     return true;
@@ -487,8 +536,14 @@ float FusionLight::calculateLux(Event& event, int32_t level, int32_t max_level,
     const float blue = color.blue;
 
     const PanelLeakage channels = LeakageAtFullBrightness(args_, color);
+    const float panel_load_factor =
+            panel_load_.has_value()
+                    ? PanelLoadFactor(*panel_load_, color, panel_level_, args_.max_level)
+                    : 1.0f;
+    last_panel_load_factor_ = panel_load_factor;
     const float comp_lux =
-            LeakageAtBrightness(args_, channels, capped_level, max_level, color, last_dim_alpha_);
+            LeakageAtBrightness(args_, channels, capped_level, max_level, color, last_dim_alpha_) *
+            panel_load_factor;
     const float truncated_raw_lux = static_cast<int32_t>(raw_lux);
     const float adj_lux = std::max(truncated_raw_lux - comp_lux, 0.0f);
     last_leakage_ = comp_lux;

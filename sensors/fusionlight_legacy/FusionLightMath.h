@@ -28,6 +28,35 @@ struct BrightnessRemapPoint {
     int32_t level;
 };
 
+// How the light of the panel depends on how much of the screen is lit.
+//
+// An OLED panel emits less light per pixel the more of it is lit, as the supply of the pixels
+// gives in under the load. The profile and the factory calibration describe a screen that shows
+// one color everywhere. A bright area above the sensor on an otherwise dark screen therefore
+// leaks more light into the sensor than they say: on lunaa a white patch on a black screen is
+// 27% brighter than a white screen, which in a dark room was reported as up to 100 lux.
+//
+// The load of a screen is the mean over its pixels of their light, weighted by color and by
+// position (see ScreenLoadWeights), times the share of the brightness level in its maximum. A
+// white screen at full brightness has a load of about 1. The panel then emits
+//
+//   light = 1 - drop * load ^ exponent
+//
+// of what it would without any load. The values are fitted to raw sensor readings taken in a
+// dark room, with a patch above the sensor while the lit part of the rest of the screen was
+// varied in size, position and color.
+struct PanelLoadArgs {
+    // Share of light a white screen at full brightness loses, e.g. 0.218.
+    float drop;
+    // Below 1 if the first lit parts of the screen cost more light than further ones.
+    float exponent;
+    ScreenLoadWeights weights;
+    // Fixed factor on the compensated light, for a factory calibration that is slightly off
+    // what the panel emits, e.g. because it aged since. 1 leaves it alone. It only applies
+    // while the load is known.
+    float scale;
+};
+
 // Light the panel leaks into the sensor at full brightness.
 struct PanelLeakage {
     float red;
@@ -79,6 +108,20 @@ float LevelWithDcDimming(const FusionLightArgs& args, float level, int32_t dc_al
 // to 0, above its last point it continues one to one. Without a table the level is the
 // brightness.
 int32_t ToBrightness(const std::vector<BrightnessRemapPoint>& table, int32_t level);
+
+// Factor to apply to the light the profile expects from the panel, for the screen content that
+// was captured.
+//
+// The profile describes a screen that shows the color above the sensor everywhere. That screen
+// has a load of its own, so the factor is the light at the load of the captured screen divided by
+// the light at the load of that uniform screen, times the fixed scale. If the screen really shows
+// one color the two loads are the same and only the scale remains. A dark screen with a bright
+// area above the sensor gives a factor above 1.
+//
+// The load of the captured screen is only known for a capture of the whole screen. Without it
+// the factor is 1, which is the behaviour without the correction.
+float PanelLoadFactor(const PanelLoadArgs& panel_load, const ScreenColor& color,
+                      int32_t panel_level, int32_t max_level);
 
 }  // namespace fusionlight_legacy
 }  // namespace implementation

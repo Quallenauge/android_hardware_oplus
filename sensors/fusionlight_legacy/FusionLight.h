@@ -9,6 +9,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -31,12 +32,14 @@ namespace fusionlight_legacy {
 using ::android::hardware::sensors::V1_0::Event;
 
 std::vector<BrightnessRemapPoint> ParseBrightnessRemap(const std::string& value);
+std::optional<PanelLoadArgs> ParsePanelLoad(const std::string& value);
 
 // What the correction reads from its surroundings.
 struct FusionLightEnvironment {
     std::unique_ptr<PanelState> panel;
     std::unique_ptr<ScreenSampler> sampler;
     std::vector<BrightnessRemapPoint> brightness_remap;
+    std::optional<PanelLoadArgs> panel_load;
     std::function<FusionLightArgs(const std::string& sensor_name)> load_args;
     std::function<int64_t()> now_ms;
 };
@@ -117,6 +120,8 @@ class FusionLight final {
     std::function<FusionLightArgs(const std::string& sensor_name)> load_args_;
     std::function<int64_t()> now_ms_;
     std::vector<BrightnessRemapPoint> brightness_remap_;
+    std::optional<PanelLoadArgs> panel_load_;
+    int32_t panel_level_ = 0;
     std::unique_ptr<ScreenSampler> sampler_;
     bool enabled_ = false;
     bool debug_ = false;
@@ -149,6 +154,7 @@ class FusionLight final {
     float last_lux_per_raw_ = 0.0f;
     // Light of the panel the last calculation subtracted.
     float last_leakage_ = 0.0f;
+    float last_panel_load_factor_ = 1.0f;
     // Tolerance window of the raw value, negative limits force a calculation.
     float window_upper_ = -1.0f;
     float window_lower_ = -10.0f;
