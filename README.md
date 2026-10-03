@@ -19,3 +19,4 @@
 | OPLUS_LINEAGE_VIBRATOR_HAL | INCLUDE_DIR | Device specific include dir path | |
 | OPLUS_LINEAGE_VIBRATOR_HAL | USE_EFFECT_STREAM | Enable effect stream feature | false |
 | OPLUS_SENSORS_FUSIONLIGHT | BACKEND_SUBHAL_LIB_NAME | FusionLight Sensors SubHAL backend library name | |
+| OPLUS_SENSORS_FUSIONLIGHT_LEGACY | BACKEND_SUBHAL_LIB_NAME | Legacy FusionLight Sensors SubHAL backend library name | sensors.ssc.so |
