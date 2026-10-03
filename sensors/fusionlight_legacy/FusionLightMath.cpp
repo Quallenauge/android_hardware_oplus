@@ -388,6 +388,27 @@ float LevelWithDcDimming(const FusionLightArgs& args, float level, int32_t dc_al
     return coef * l;
 }
 
+int32_t ToBrightness(const std::vector<BrightnessRemapPoint>& table, int32_t level) {
+    if (level <= 0 || table.empty()) {
+        return level;
+    }
+    // Find the two points the level lies between and interpolate the brightness, the reverse of
+    // what a kernel with the table does. Levels below the first point use 0:0 as the lower one.
+    BrightnessRemapPoint low{0, 0};
+    for (const auto& high : table) {
+        if (level <= high.level) {
+            const int32_t brightness = low.brightness + (level - low.level) *
+                                                                (high.brightness - low.brightness) /
+                                                                (high.level - low.level);
+            // The panel is on, so the brightness must not become 0, which means off.
+            return std::max(brightness, 1);
+        }
+        low = high;
+    }
+    // Above the table, e.g. in a high brightness mode, the level follows the brightness again.
+    return low.brightness + (level - low.level);
+}
+
 }  // namespace fusionlight_legacy
 }  // namespace implementation
 }  // namespace subhal

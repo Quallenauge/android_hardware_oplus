@@ -30,6 +30,13 @@ using android::base::GetProperty;
 // Screen region above the light sensor as "left,top,right,bottom" in pixels.
 constexpr auto kRegionProperty = "ro.vendor.oplus.sensor.fusionlight.region";
 constexpr auto kPeriodProperty = "ro.vendor.oplus.sensor.fusionlight.screenshot_period";
+// Table of the brightness the framework sets and the level the panel gets for it, as
+// "brightness:level,brightness:level,...", for example "4:4,61:5,100:8,...,2047:2047".
+// Set it on devices whose kernel sends the brightness to the panel unchanged, although the
+// fusionlight profile was made with a kernel that remaps it (oplus,dsi-brightness-remapping in
+// the device tree of the panel, which is where the values come from). Leave it unset if the
+// running kernel has the table: find /proc/device-tree -name "oplus,dsi-brightness-remapping".
+constexpr auto kBrightnessRemapProperty = "ro.vendor.oplus.sensor.fusionlight.brightness_remap";
 constexpr auto kDebugProperty = "persist.vendor.sensors.fusionlight.debug";
 constexpr int64_t kCalculationHoldNs = 50'000'000;
 constexpr int64_t kFlashHoldNs = 800'000'000;
@@ -56,6 +63,34 @@ std::optional<ScreenRegion> ParseRegion(const std::string& value) {
     return region;
 }
 
+}  // anonymous namespace
+
+// Parses the brightness remapping table. Both columns have to increase from entry to entry,
+// otherwise the conversion would be ambiguous. An invalid table is dropped as a whole, which
+// leaves the level unconverted, rather than used in part.
+std::vector<BrightnessRemapPoint> ParseBrightnessRemap(const std::string& value) {
+    std::vector<BrightnessRemapPoint> table;
+    if (value.empty()) {
+        return table;
+    }
+    for (const auto& entry : android::base::Split(value, ",")) {
+        const auto fields = android::base::Split(entry, ":");
+        BrightnessRemapPoint point;
+        if (fields.size() != 2 ||
+            !android::base::ParseInt(android::base::Trim(fields[0]), &point.brightness, 0) ||
+            !android::base::ParseInt(android::base::Trim(fields[1]), &point.level, 0) ||
+            (!table.empty() &&
+             (point.brightness <= table.back().brightness || point.level <= table.back().level))) {
+            LOG(ERROR) << "Invalid " << kBrightnessRemapProperty << " entry " << entry;
+            return {};
+        }
+        table.push_back(point);
+    }
+    return table;
+}
+
+namespace {
+
 void FillUncalculated(Event& event, float raw_lux, int32_t level) {
     event.u.data[1] = raw_lux;
     for (size_t i = 2; i <= 8; ++i) {
@@ -75,6 +110,7 @@ bool FusionLight::initialize(const std::string& sensor_name) {
     }
     const std::chrono::milliseconds period(GetIntProperty(kPeriodProperty, 50, 1, 1000));
     FusionLightEnvironment environment;
+    environment.brightness_remap = ParseBrightnessRemap(GetProperty(kBrightnessRemapProperty, ""));
     environment.panel = std::make_unique<PanelState>();
     environment.sampler = std::make_unique<ScreenSampler>(*region, period);
     environment.load_args = LoadFusionLightArgs;
@@ -90,6 +126,7 @@ void FusionLight::initialize(const std::string& sensor_name, FusionLightEnvironm
     sensor_name_ = sensor_name;
     panel_ = std::move(environment.panel);
     sampler_ = std::move(environment.sampler);
+    brightness_remap_ = std::move(environment.brightness_remap);
     load_args_ = std::move(environment.load_args);
     now_ms_ = std::move(environment.now_ms);
 }
@@ -148,7 +185,7 @@ bool FusionLight::process(Event& event) {
         }
     }
 
-    int32_t level = panel_->brightness();
+    int32_t level = ToBrightness(brightness_remap_, panel_->brightness());
     updateScreenState(level);
     if (args_.level_from_event != 0) {
         level = static_cast<int32_t>(event.u.data[3]);
