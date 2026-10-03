@@ -136,8 +136,10 @@ bool FusionLight::process(Event& event) {
         return true;
     }
 
-    // The panel flashes below a finger on the fingerprint sensor.
-    const int32_t flash_state = panel_->fingerprintPressed() ? 1 : 0;
+    // The panel flashes below a finger on the fingerprint sensor. The touch state stays set
+    // after a successful unlock, so also require the panel to be in its fingerprint high
+    // brightness mode, which is the only time the dim alpha is reported.
+    const int32_t flash_state = panel_->fingerprintPressed() && panel_->dimAlpha() != 0 ? 1 : 0;
     if (flash_state != flash_active_) {
         flash_active_ = flash_state;
         if (flash_state == 1) {
