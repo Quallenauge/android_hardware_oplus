@@ -1,0 +1,66 @@
+//
+// SPDX-FileCopyrightText: The LineageOS Project
+// SPDX-License-Identifier: Apache-2.0
+//
+
+cc_defaults {
+    name: "sensors.fusionlight_legacy_defaults",
+    defaults: ["hidl_defaults"],
+    shared_libs: [
+        "android.hardware.sensors@1.0",
+        "libbase",
+        "libbinder_ndk",
+        "libcutils",
+        "libdisplayconfig.qti",
+        "libhidlbase",
+        "libjsoncpp",
+        "libtinyxml2",
+        "libui",
+        "libutils",
+        "vendor.oplus.hardware.oplusSensor-V1-ndk",
+    ],
+    header_libs: [
+        "kernel_headers.oplus",
+    ],
+    cflags: [
+        "-DLOG_TAG=\"sensors.fusionlight_legacy\"",
+    ],
+    vendor: true,
+}
+
+// The correction itself, without the Sensors SubHAL around it.
+cc_library_static {
+    name: "libfusionlight_legacy",
+    defaults: ["sensors.fusionlight_legacy_defaults"],
+    srcs: [
+        "FusionLight.cpp",
+        "FusionLightArgs.cpp",
+        "FusionLightMath.cpp",
+        "PanelState.cpp",
+        "ScreenSampler.cpp",
+    ],
+    export_include_dirs: ["."],
+}
+
+cc_library_shared {
+    name: "sensors.fusionlight_legacy",
+    defaults: ["sensors.fusionlight_legacy_defaults"],
+    srcs: [
+        "SensorsSubHal.cpp",
+    ],
+    whole_static_libs: [
+        "libfusionlight_legacy",
+    ],
+    shared_libs: [
+        "android.hardware.sensors@2.0",
+        "android.hardware.sensors@2.0-ScopedWakelock",
+    ],
+    header_libs: [
+        "android.hardware.sensors@2.X-multihal.header",
+        "libhardware_headers",
+    ],
+    cflags: select(soong_config_variable("OPLUS_SENSORS_FUSIONLIGHT_LEGACY", "BACKEND_SUBHAL_LIB_NAME"), {
+        any @ flag_val: ["-DBACKEND_SUBHAL_LIB_NAME=\"" + flag_val + "\""],
+        default: [],
+    }),
+}
