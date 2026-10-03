@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include <android-base/macros.h>
 #include <android/hardware/sensors/1.0/types.h>
@@ -29,10 +30,13 @@ namespace fusionlight_legacy {
 
 using ::android::hardware::sensors::V1_0::Event;
 
+std::vector<BrightnessRemapPoint> ParseBrightnessRemap(const std::string& value);
+
 // What the correction reads from its surroundings.
 struct FusionLightEnvironment {
     std::unique_ptr<PanelState> panel;
     std::unique_ptr<ScreenSampler> sampler;
+    std::vector<BrightnessRemapPoint> brightness_remap;
     std::function<FusionLightArgs(const std::string& sensor_name)> load_args;
     std::function<int64_t()> now_ms;
 };
@@ -112,6 +116,7 @@ class FusionLight final {
     std::unique_ptr<PanelState> panel_;
     std::function<FusionLightArgs(const std::string& sensor_name)> load_args_;
     std::function<int64_t()> now_ms_;
+    std::vector<BrightnessRemapPoint> brightness_remap_;
     std::unique_ptr<ScreenSampler> sampler_;
     bool enabled_ = false;
     bool debug_ = false;
