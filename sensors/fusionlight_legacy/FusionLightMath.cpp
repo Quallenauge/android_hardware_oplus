@@ -409,6 +409,25 @@ int32_t ToBrightness(const std::vector<BrightnessRemapPoint>& table, int32_t lev
     return low.brightness + (level - low.level);
 }
 
+float PanelLoadFactor(const PanelLoadArgs& panel_load, const ScreenColor& color,
+                      int32_t panel_level, int32_t max_level) {
+    if (!color.load.has_value() || max_level <= 0) {
+        return 1.0f;
+    }
+    // The load scales with the brightness: the same picture draws less at a lower level. The
+    // level sent to the panel is used, not the converted brightness, as the light of the panel
+    // is proportional to it.
+    const float luminance = static_cast<float>(panel_level) / max_level;
+    // Share of the light without load the panel emits at a load.
+    const auto light = [&](float load) {
+        return 1.0f - panel_load.drop * std::pow(luminance * load, panel_load.exponent);
+    };
+    // What the profile implies: the color above the sensor on the whole screen.
+    const float expected = light(panel_load.weights.of(color));
+    return expected > 0.0f ? panel_load.scale * std::max(light(*color.load), 0.0f) / expected
+                           : 1.0f;
+}
+
 }  // namespace fusionlight_legacy
 }  // namespace implementation
 }  // namespace subhal

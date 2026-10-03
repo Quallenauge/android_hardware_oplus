@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <limits>
 
 #include <android-base/logging.h>
@@ -30,6 +31,7 @@ constexpr auto kRequestTimeout = 1s;
 constexpr auto kRetryPeriod = 2s;
 constexpr int32_t kFailureThreshold = 3;
 constexpr int32_t kSampleStep = 3;
+constexpr int32_t kLoadSampleStep = 16;
 constexpr uint64_t kBufferUsage = GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_OFTEN;
 
 // Light the panel emits per 8-bit code value, relative to 255 for the brightest one. The region
@@ -62,6 +64,19 @@ constexpr std::array<float, 256> kPanelResponse = {
         252.61f, 255.0f,
 };
 // clang-format on
+
+// Linear light per 8-bit code value, between 0 and 1, for the load of the screen. A plain gamma
+// of 2.2 is close enough for that.
+const std::array<float, 256>& LinearLight() {
+    static const auto table = [] {
+        std::array<float, 256> values;
+        for (size_t code = 0; code < values.size(); ++code) {
+            values[code] = std::pow(code / 255.0f, 2.2f);
+        }
+        return values;
+    }();
+    return table;
+}
 
 int32_t ToCodeValue(float response) {
     // Nearest entry, compared with two decimals.
@@ -180,7 +195,8 @@ class ScreenSampler::Client final : public DisplayConfig::ConfigCallback {
     int error_ = 0;
 };
 
-ScreenColor SampleFrame(const uint8_t* pixels, size_t row_bytes, const ScreenRegion& region) {
+ScreenColor SampleFrame(const uint8_t* pixels, size_t row_bytes, int32_t width, int32_t height,
+                        const ScreenRegion& region, const ScreenLoadWeights* load_weights) {
     float red = 0.0f, green = 0.0f, blue = 0.0f;
     int32_t count = 0;
     for (int32_t y = region.top; y < region.bottom; y += kSampleStep) {
@@ -192,12 +208,45 @@ ScreenColor SampleFrame(const uint8_t* pixels, size_t row_bytes, const ScreenReg
             ++count;
         }
     }
+    std::optional<float> screen_load;
+    if (load_weights != nullptr) {
+        // The load is an average over the whole screen and does not need every pixel: a grid
+        // of every 16th pixel in both directions, about ten thousand samples on a 1080 x 2400
+        // screen, is used. Each row is averaged first and then weighted by its position.
+        float load = 0.0f;
+        const auto& linear = LinearLight();
+        const auto& weights = *load_weights;
+        int32_t load_count = 0;
+        for (int32_t y = kLoadSampleStep / 2; y < height; y += kLoadSampleStep) {
+            float row = 0.0f;
+            int32_t row_count = 0;
+            for (int32_t x = kLoadSampleStep / 2; x < width; x += kLoadSampleStep) {
+                const uint8_t* pixel = pixels + y * row_bytes + x * 4;
+                row += weights.red * linear[pixel[0]] + weights.green * linear[pixel[1]] +
+                       weights.blue * linear[pixel[2]];
+                ++row_count;
+            }
+            // Rows count more the further they are from the bottom edge of the panel.
+            const float from_bottom = 1.0f - (y + 0.5f) / height;
+            load += row / row_count *
+                    (weights.uniform + (1.0f - weights.uniform) * 2.0f * from_bottom);
+            ++load_count;
+        }
+        screen_load = load / load_count;
+    }
     return ScreenColor{ToCodeValue(red / count), ToCodeValue(green / count),
-                       ToCodeValue(blue / count)};
+                       ToCodeValue(blue / count), screen_load};
 }
 
-ScreenSampler::ScreenSampler(ScreenRegion region, std::chrono::milliseconds period)
-    : region_(region), period_(period) {}
+float ScreenLoadWeights::of(const ScreenColor& color) const {
+    const auto& linear = LinearLight();
+    const auto channel = [&](int32_t code) { return linear[std::clamp(code, 0, 255)]; };
+    return red * channel(color.red) + green * channel(color.green) + blue * channel(color.blue);
+}
+
+ScreenSampler::ScreenSampler(ScreenRegion region, std::chrono::milliseconds period,
+                             std::optional<ScreenLoadWeights> load_weights)
+    : region_(region), period_(period), load_weights_(load_weights) {}
 
 ScreenSampler::~ScreenSampler() {
     stop();
@@ -225,6 +274,11 @@ void ScreenSampler::stop() {
     thread_.join();
 }
 
+void ScreenSampler::setWholeScreen(bool whole_screen) {
+    std::lock_guard lock(mutex_);
+    whole_screen_ = whole_screen && load_weights_.has_value();
+}
+
 void ScreenSampler::setCapturing(bool capturing) {
     {
         std::lock_guard lock(mutex_);
@@ -245,6 +299,7 @@ void ScreenSampler::threadLoop() {
     auto next_sample = std::chrono::steady_clock::now();
 
     for (;;) {
+        bool whole_screen;
         {
             std::unique_lock lock(mutex_);
             condition_.wait(lock, [&] { return !running_ || capturing_; });
@@ -255,6 +310,7 @@ void ScreenSampler::threadLoop() {
             if (!capturing_) {
                 continue;
             }
+            whole_screen = whole_screen_;
         }
 
         auto retry = [&] {
@@ -295,7 +351,10 @@ void ScreenSampler::threadLoop() {
             }
         }
 
-        const auto status = client->capture(buffer->handle, region_);
+        const auto width = static_cast<int32_t>(buffer->getWidth());
+        const auto height = static_cast<int32_t>(buffer->getHeight());
+        const auto status = client->capture(
+                buffer->handle, whole_screen ? ScreenRegion{0, 0, width, height} : region_);
         if (!status.has_value() || *status != 0) {
             LOG(WARNING) << "CWB capture failed: "
                          << (status.has_value() ? std::to_string(*status) : "timeout");
@@ -312,7 +371,8 @@ void ScreenSampler::threadLoop() {
         }
         const auto* pixels = static_cast<const uint8_t*>(data);
         const size_t row_bytes = static_cast<size_t>(buffer->getStride()) * 4;
-        const ScreenColor color = SampleFrame(pixels, row_bytes, region_);
+        const ScreenColor color = SampleFrame(pixels, row_bytes, width, height, region_,
+                                              whole_screen ? &*load_weights_ : nullptr);
         buffer->unlock();
 
         {
