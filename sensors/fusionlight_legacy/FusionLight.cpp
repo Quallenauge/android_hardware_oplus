@@ -105,6 +105,7 @@ void FusionLight::setEnabled(bool enabled) {
         args_ = load_args_(sensor_name_);
         use_moving_average_ = args_.use_moving_average != 0;
         use_median_filter_ = args_.use_median_filter != 0;
+        lux_valid_ = false;
         sampler_->start();
         sampler_->setCapturing(true);
         capturing_ = true;
@@ -152,8 +153,17 @@ bool FusionLight::process(Event& event) {
     if (args_.level_from_event != 0) {
         level = static_cast<int32_t>(event.u.data[3]);
     }
-    const bool reported = acceptEvent(event, level);
+    reported_previous_lux_ = false;
+    bool reported = acceptEvent(event, level);
     last_level_ = level;
+    if (reported && reported_previous_lux_ && !lux_valid_) {
+        // The last lux is from before the sensor was disabled, possibly hours ago. Do not report
+        // it as the first value, e.g. while a fingerprint flash holds the lux back.
+        reported = false;
+        if (debug_) LOG(INFO) << "Not reporting the lux from before the sensor was enabled";
+    } else if (reported) {
+        lux_valid_ = true;
+    }
     if (debug_) {
         LOG(INFO) << "reported=" << reported << " lux=" << event.u.data[0] << " level=" << level;
     }
@@ -515,6 +525,7 @@ int32_t FusionLight::findLuxRange(float lux) {
 }
 
 void FusionLight::reportPreviousLux(float raw_lux, Event& event, int32_t level) {
+    reported_previous_lux_ = true;
     float value = last_lux_;
     event.u.data[0] = value;
     if (use_moving_average_) {

@@ -116,6 +116,10 @@ class FusionLight final {
     bool enabled_ = false;
     bool debug_ = false;
 
+    // Whether a lux was determined since the sensor was enabled.
+    bool lux_valid_ = false;
+    // Whether the event at hand reported the previous lux instead of a new one.
+    bool reported_previous_lux_ = false;
     // A capture of the screen was requested and the next event calculates with it.
     bool capturing_ = false;
     // The recalculation period has passed, so the next event inside the window captures too.
