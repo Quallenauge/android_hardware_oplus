@@ -64,3 +64,20 @@ cc_library_shared {
         default: [],
     }),
 }
+
+cc_test {
+    name: "fusionlight_legacy_test",
+    defaults: ["sensors.fusionlight_legacy_defaults"],
+    srcs: [
+        "tests/FusionLightArgsTest.cpp",
+        "tests/FusionLightGoldenTest.cpp",
+        "tests/FusionLightMathTest.cpp",
+        "tests/FusionLightTest.cpp",
+        "tests/ScreenSamplerTest.cpp",
+    ],
+    static_libs: [
+        "libfusionlight_legacy",
+        "libgmock",
+    ],
+    test_suites: ["device-tests"],
+}
